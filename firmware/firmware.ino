@@ -1,122 +1,96 @@
-#include <Servo.h>
+#include "lookups.h"
+#include "fixed.h"
 
-#include "irsharp.h"
-#include "communication.h"
-#include "Hdlc.h"
-#include "mcdriver.h"
+#define SWEEP_STEP 100
+#define SWEEP_PULSE_REPETITON_COUNT 10
 
-// comment out for USB serial
-#define USE_XBEE_FOR_TELEMETRY
+#define SERVO_MIN_PULSE 1000
+#define SERVO_MAX_PULSE 2000
+#define SERVO_PWM_PIN 12
 
-#ifdef USE_XBEE_FOR_TELEMETRY
-#define SERIALDEV Serial3
-#else
-#define SERIALDEV Serial
-#endif
+#define SENSOR_SWITCH_0 9
+#define SENSOR_SWITCH_1 10
 
-#define TEENSY_LED          13
-#define IR_LEFT             A9
-#define IR_RIGHT            A8
-#define IR_FRONT_LEFT       A7
-#define IR_FRONT_RIGHT      A6
-#define IR_FRONT            A5
+// Sharp measurement takes 38.3ms+-9.6ms
+// Divide it by two and convert to us
+#define STEP_DELAY 19150
 
-#define STEERING_PWM_PIN    4
-#define DRIVE_PWM_PIN       3
+uint8_t sensors[2][3] = {
+  {A0, A2, A4}, // Group 0: left, center, right
+  {A1, A3, A5}  // Group 1: left, center, right
+};
 
-bc_telemetry_packet_t telemetry;
+IntervalTimer step_timer;
+volatile int step_counter = 0;
+volatile int started = 0;
 
-IRSharp sharp_left(IR_LEFT);
-IRSharp sharp_right(IR_RIGHT);
-IRSharp sharp_front_left(IR_FRONT_LEFT);
-IRSharp sharp_front_right(IR_FRONT_RIGHT);
-IRSharp sharp_front(IR_FRONT);
+fixed ir_left;
+fixed ir_center = 40;
+fixed ir_right;
+volatile int sensor_group_in_use;
 
-uint8_t m_rx_buffer[255];
-uint8_t m_rx_len = 0;
-uint8_t m_tx_buffer[255];
-uint8_t m_tx_len = 0;
-HDLC hdlc(m_rx_buffer, 255);
 
-Servo steeringservo;
-Servo drivingservo;
-
-bool m_automatic = false;
-
-uint32_t last_time = 0;
-
-MCDriver driver;
-
-void send_telemetry() {
-	m_tx_len = hdlc.encode((uint8_t*) &telemetry, sizeof(bc_telemetry_packet_t), m_tx_buffer);
-	SERIALDEV.write(m_tx_buffer, m_tx_len);
+void setup(void) {
+  for (int i=0; i<2; i++) {
+    for (int j=0; j<3; j++){
+      pinMode(sensors[i][j], INPUT);
+    }
+  }
+  pinMode(SERVO_PWM_PIN,   OUTPUT);
+  pinMode(SENSOR_SWITCH_0, OUTPUT);
+  pinMode(SENSOR_SWITCH_1, OUTPUT);
+  pinMode(LED_BUILTIN,     OUTPUT);
+  analogReference(DEFAULT);
+  analogReadAveraging(16);
+  analogReadResolution(10);
+  step_timer.begin(step_main, STEP_DELAY);
 }
 
-void setup() {
-	SERIALDEV.begin(57600);
-
-	steeringservo.attach(STEERING_PWM_PIN);
-	drivingservo.attach(DRIVE_PWM_PIN);
-
-	analogReference (DEFAULT);
-	analogReadAveraging(16);
-	analogReadResolution(10);
-	pinMode(TEENSY_LED, OUTPUT);
-
-	telemetry.header = BC_TELEMETRY;
+void step_main(void) {
+  step_counter++;
+  if (started == 0) {
+     turn_on_sensors();
+  } else {
+    heartbeat();
+    sensor_group_in_use = step_counter % 2;   
+    ir_left   = irLookup[analogRead(sensors[sensor_group_in_use][0])];
+    ir_center = irLookup[analogRead(sensors[sensor_group_in_use][1])];
+    ir_right  = irLookup[analogRead(sensors[sensor_group_in_use][2])];
+  }
 }
 
-void toggle_led() {
-	static bool ledon = true;
-	if (ledon) {
-		ledon = false;
-		digitalWrite(TEENSY_LED, HIGH);
-	}
-	else {
-		ledon = true;
-		digitalWrite(TEENSY_LED, LOW);
-	}
+void heartbeat(void) {
+  if (step_counter % 25 == 0) {
+    if (step_counter % 50 == 0) {
+      digitalWrite(LED_BUILTIN, LOW);
+    } else {
+      digitalWrite(LED_BUILTIN, HIGH);
+    }
+  }
 }
 
-void loop() {
-	while (SERIALDEV.available() > 0) {
-		m_rx_len = hdlc.decode(SERIALDEV.read());
-
-		// check if HDLC packet is received
-		if (m_rx_len > 0) {
-			uint8_t header = ((uint8_t*) m_rx_buffer)[0];
-
-			if (CB_MOTOR_COMMAND == header) {
-				cb_motor_command_packet_t* motor = (cb_motor_command_packet_t*) m_rx_buffer;
-				m_automatic = motor->automatic;
-				if (m_automatic) {
-					driver.set_drive_pwm(motor->drive_pwm);
-				}
-				else {
-					steeringservo.write(motor->steering_pwm);
-					drivingservo.write(motor->drive_pwm);
-				}
-			}
-		}
-	}
-
-	telemetry.time = millis();
-	telemetry.ir_left = sharp_left.distance();
-	telemetry.ir_right = sharp_right.distance();
-	telemetry.ir_front_left = sharp_front_left.distance();
-	telemetry.ir_front_right = sharp_front_right.distance();
-	telemetry.ir_front = sharp_front.distance();
-
-	drive_cmd_t& drive_cmd = driver.drive(telemetry);
-	if (m_automatic) {
-		steeringservo.write(drive_cmd.steering_pwm);
-		drivingservo.write(drive_cmd.driving_pwm);
-		toggle_led();
-	}
-
-	if (telemetry.time > last_time + 20) {
-		send_telemetry();
-		last_time = telemetry.time;
-	}
+void turn_on_sensors(void) {
+  if (step_counter == 1) {
+    digitalWrite(SENSOR_SWITCH_0, HIGH);
+  } else {
+    digitalWrite(SENSOR_SWITCH_1, HIGH);
+    started = 1;
+  }
 }
 
+volatile int pulse_duration   = SERVO_MIN_PULSE;
+void sweep_servo(void) {
+    if (step_counter % SWEEP_PULSE_REPETITON_COUNT == 0) { 
+      pulse_duration += SWEEP_STEP;
+    }
+    if (pulse_duration > SERVO_MAX_PULSE or pulse_duration < SERVO_MIN_PULSE) {
+      pulse_duration = SERVO_MIN_PULSE;
+    }
+    digitalWrite(SERVO_PWM_PIN, HIGH);
+    delayMicroseconds(pulse_duration);
+    digitalWrite(SERVO_PWM_PIN, LOW);    
+}
+
+void loop(void) {
+  delay(10000);
+}
