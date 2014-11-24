@@ -13,20 +13,23 @@ protected:
 	mc_driver_states_t state;
 	Timeouter stuck_timer, last_speed_add_timer;
 	bool maybe_stuck;
-	fixed min_front;
-	uint8_t normal_pwm;
 
-	point_t l, fl, f, fr, r;
-	int32_t steering;
+	fixed min_front;
+
+        fixed driving_max;
+        fixed driving_norm_f;
+        fixed driving_norm_b;
+        fixed driving_min_b;
+
+	point_t l, f, r;
+	fixed steering;
 	fixed last_speed_add;
 
 	void _calc_direction(bc_telemetry_packet_t& telemetry);
-	void _clamp_steering_and_speed(bc_telemetry_packet_t& telemetry);
 
 public:
-	MCDriver();
+	MCDriver(int steering_neutral, int driving_neutral, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
 	drive_cmd_t& drive(bc_telemetry_packet_t& telemetry);
-	void set_drive_pwm(uint8_t pwm);
 };
 
 #endif // __MCDRIVER__H

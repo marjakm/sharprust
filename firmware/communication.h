@@ -23,8 +23,8 @@ typedef struct
 		fixed mc_dist;
 		fixed mc_angle;
 
-		int32_t steering_pwm;
-		int32_t driving_pwm;
+		fixed steering_pwm;
+		fixed driving_pwm;
 	} bc_telemetry_packet_t;
 
 	typedef struct

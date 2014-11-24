@@ -1,12 +1,11 @@
 #ifndef __DRIVER__H
 #define __DRIVER__H
 
-#include "types.h"
 #include "communication.h"
 
 typedef struct drive_cmd_t {
-	int32_t steering_pwm;
-	int32_t driving_pwm;
+	fixed steering_pwm;
+	fixed driving_pwm;
 } drive_cmd_t;
 
 class Timeouter {
