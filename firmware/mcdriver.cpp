@@ -14,19 +14,23 @@ static const fixed VAL_5_5(5.5);
   #include "stdio.h"
 #endif
 
-MCDriver::MCDriver(int steering_neutral, int driving_neutral, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b) {
+MCDriver::MCDriver(int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b) {
 	state = STATE_IDLE;
 	maybe_stuck = false;
 
         driving_max    = max_driving;
         driving_norm_f = norm_driving_f;
+        driving_neutral= neutral_driving;
         driving_norm_b = norm_driving_b;
         driving_min_b  = min_driving_b;
-
-	drive_cmd.steering_pwm = steering_neutral;
-	drive_cmd.driving_pwm  = driving_neutral;
-
-	steering = 0;
+        
+        steering_neutral    = neutral_steering;
+        steering_deg_to_pwm = (min_steering - max_steering)/range_steering_deg;
+        
+        steering = 0;
+	drive_cmd.steering_pwm = neutral_steering;
+	drive_cmd.driving_pwm  = neutral_driving;
+	
 	last_speed_add_timer.start(1, 1);
 }
 
@@ -62,6 +66,10 @@ void MCDriver::_calc_direction(bc_telemetry_packet_t& telemetry) {
 #endif
 }
 
+fixed MCDriver::_calc_steering_pwm(fixed steering_direction_deg) {
+  return steering_deg_to_pwm*steering_direction_deg+steering_neutral;
+}
+
 drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry) {
 	fixed turn, speed_add, front_fact, angle_fact;
 
@@ -73,7 +81,7 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry) {
 	switch (state) {
 		case STATE_NORMAL:
 			// steering calculations
-			drive_cmd.steering_pwm = 90 - steering;
+			drive_cmd.steering_pwm = _calc_steering_pwm(-steering);
 
 			// speed calculations
 			speed_add = fixed(driving_max - driving_norm_f);
@@ -122,7 +130,7 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry) {
 			break;
 
 		case STATE_BACKING:
-			drive_cmd.steering_pwm = 90 + steering;
+			drive_cmd.steering_pwm = _calc_steering_pwm(steering);
 			drive_cmd.driving_pwm = driving_norm_b;
 
 			if (!stuck_timer.running()) {
@@ -135,7 +143,7 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry) {
 			break;
 
 		case STATE_BRAKING:
-			drive_cmd.steering_pwm = 90 - steering;
+			drive_cmd.steering_pwm = _calc_steering_pwm(-steering);
 			drive_cmd.driving_pwm = driving_norm_b;
 
 			if (!stuck_timer.running()) {
