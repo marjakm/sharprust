@@ -127,3 +127,4 @@ uint8_t HDLC::encode(uint8_t* source, uint8_t source_len, uint8_t* dest) {
 
 	return destp - dest; // how many bytes are in dest now
 }
+

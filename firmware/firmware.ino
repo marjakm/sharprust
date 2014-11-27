@@ -4,19 +4,21 @@
 #include "driver.h"
 #include "mcdriver.h"
 
-#define SWEEP_STEP 100
+#define SWEEP_STEP 5
 #define SWEEP_PULSE_REPETITON_COUNT 10
 
-#define DRIVING_MIN_PULSE 1000
-#define DRIVING_NORM_B 1200
+// Bigger number is forwards
+#define DRIVING_MIN_PULSE 1450
+#define DRIVING_NORM_B 1450
 #define DRIVING_NEUTRAL 1500
-#define DRIVING_NORM_F 1800
-#define DRIVING_MAX_PULSE 2000
+#define DRIVING_NORM_F 1600
+#define DRIVING_MAX_PULSE 1600
 #define DRIVING_PWM_PIN 11
 
-#define STEERING_MIN_PULSE 1000
-#define STEERING_NEUTRAL 1500
-#define STEERING_MAX_PULSE 2000
+// Bigger number turns left
+#define STEERING_MIN_PULSE 1340
+#define STEERING_NEUTRAL 1480
+#define STEERING_MAX_PULSE 1560
 #define STEERING_RANGE_DEG 120
 #define STEERING_PWM_PIN 12
 
@@ -64,6 +66,8 @@ void setup(void) {
 
 void step_main(void) {
   step_counter++;
+//  heartbeat();
+//  sweep_servo(DRIVING_PWM_PIN, DRIVING_MIN_PULSE, DRIVING_MAX_PULSE);
   if (started == 0) {
      turn_on_sensors();
   } else {
@@ -112,9 +116,23 @@ void send_pwm_command(int pin, int min_pulse, int max_pulse, int pulse_duration)
 }
 
 volatile int sweep_pulse_duration = 0;
-void sweep_servo(int pin, int max_pulse, int min_pulse) {
+volatile int sweep_direction = 1;
+void sweep_servo(int pin, int min_pulse, int max_pulse) {
     if (step_counter % SWEEP_PULSE_REPETITON_COUNT == 0) { 
-      sweep_pulse_duration += SWEEP_STEP;
+      if (sweep_direction == 1) {
+        sweep_pulse_duration += SWEEP_STEP;
+      } else {
+        sweep_pulse_duration -= SWEEP_STEP;
+      }
+    }
+    if (sweep_pulse_duration >= max_pulse){
+      sweep_pulse_duration = max_pulse;
+      sweep_direction = 0;
+    } else {
+     if (sweep_pulse_duration <= min_pulse) {
+        sweep_pulse_duration = min_pulse;
+        sweep_direction = 1;
+      }
     }
     send_pwm_command(pin, min_pulse, max_pulse, sweep_pulse_duration);
 }
@@ -122,3 +140,4 @@ void sweep_servo(int pin, int max_pulse, int min_pulse) {
 void loop(void) {
   delay(10000);
 }
+

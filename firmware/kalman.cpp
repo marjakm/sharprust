@@ -24,3 +24,4 @@ fixed& SingleKalmanVar::stepKalman(fixed measurement) {
 
 	return x;
 }
+

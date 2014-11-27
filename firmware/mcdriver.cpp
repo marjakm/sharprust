@@ -67,7 +67,7 @@ void MCDriver::_calc_direction(bc_telemetry_packet_t& telemetry) {
 }
 
 fixed MCDriver::_calc_steering_pwm(fixed steering_direction_deg) {
-  return steering_deg_to_pwm*steering_direction_deg+steering_neutral;
+  return steering_neutral-steering_deg_to_pwm*steering_direction_deg;
 }
 
 drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry) {
@@ -166,3 +166,4 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry) {
 
 	return drive_cmd;
 }
+

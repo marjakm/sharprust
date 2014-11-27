@@ -297,3 +297,4 @@ fixed operator/(const int a, const fixed& b);
 fixed operator/(const double a, const fixed& b);
 
 #endif // __FIXED_T__H
+

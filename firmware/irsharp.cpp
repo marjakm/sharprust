@@ -13,3 +13,4 @@ fixed& IRSharp::distance() {
 	return dist.stepKalman(irLookup[analogRead(irPin)]);
 }
 
+
