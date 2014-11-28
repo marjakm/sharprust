@@ -3,6 +3,7 @@
 
 #include "types.h"
 
-extern const fixed irLookup[1024];
+extern const fixed ir80Lookup[1024];
+extern const fixed ir150Lookup[1024];
 
 #endif // __LOOKUPS__H

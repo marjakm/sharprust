@@ -16,8 +16,15 @@ typedef enum mc_driver_states_t {
 class MCDriver: public Driver {
 protected:
 	mc_driver_states_t state;
-	Timeouter stuck_timer, last_speed_add_timer;
-	bool maybe_stuck;
+       
+        fixed ticks_to_second;
+        
+        bool maybe_stuck;
+        fixed maybe_stuck_tick_nr;
+        fixed backing_start_tick_nr;
+        fixed braking_start_tick_nr;
+        fixed last_speed_add_tick_nr;
+	
         point_t l, f, r;
 
 	fixed min_front;
@@ -37,8 +44,8 @@ protected:
         fixed _calc_steering_pwm(fixed steering_direction_deg);
 
 public:
-	MCDriver(int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
-	drive_cmd_t& drive(bc_telemetry_packet_t& telemetry);
+	MCDriver(int tick_delay, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
+	drive_cmd_t& drive(bc_telemetry_packet_t& telemetry, int tick_nr);
 };
 
 #endif // __MCDRIVER__H

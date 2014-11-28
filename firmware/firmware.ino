@@ -4,22 +4,23 @@
 #include "driver.h"
 #include "mcdriver.h"
 
-#define SWEEP_STEP 5
-#define SWEEP_PULSE_REPETITON_COUNT 10
+#define SWEEP_STEP 10
+#define SWEEP_PULSE_REPETITON_COUNT 50
 
 // Bigger number is forwards
-#define DRIVING_MIN_PULSE 1450
-#define DRIVING_NORM_B 1450
+// 1400 - 1600
+#define DRIVING_MIN_PULSE 1400
+#define DRIVING_NORM_B 1400
 #define DRIVING_NEUTRAL 1500
-#define DRIVING_NORM_F 1600
-#define DRIVING_MAX_PULSE 1600
+#define DRIVING_NORM_F 1630
+#define DRIVING_MAX_PULSE 1630
 #define DRIVING_PWM_PIN 11
 
 // Bigger number turns left
 #define STEERING_MIN_PULSE 1340
 #define STEERING_NEUTRAL 1480
 #define STEERING_MAX_PULSE 1560
-#define STEERING_RANGE_DEG 120
+#define STEERING_RANGE_DEG 10
 #define STEERING_PWM_PIN 12
 
 #define SENSOR_SWITCH_0 9
@@ -40,7 +41,7 @@ volatile int started = 0;
 
 bc_telemetry_packet_t telemetry;
 volatile int sensor_group_in_use;
-MCDriver driver(STEERING_MIN_PULSE , STEERING_NEUTRAL, STEERING_MAX_PULSE, STEERING_RANGE_DEG, DRIVING_NEUTRAL, DRIVING_MAX_PULSE, DRIVING_NORM_F, DRIVING_NORM_B, DRIVING_MIN_PULSE);
+MCDriver driver(STEP_DELAY, STEERING_MIN_PULSE , STEERING_NEUTRAL, STEERING_MAX_PULSE, STEERING_RANGE_DEG, DRIVING_NEUTRAL, DRIVING_MAX_PULSE, DRIVING_NORM_F, DRIVING_NORM_B, DRIVING_MIN_PULSE);
 
 
 void setup(void) {
@@ -71,16 +72,23 @@ void step_main(void) {
   if (started == 0) {
      turn_on_sensors();
   } else {
-    heartbeat();
-    sensor_group_in_use = step_counter % 2;
-    telemetry.time = millis();
-    telemetry.ir_left   = irLookup[analogRead(sensors[sensor_group_in_use][0])];
-    telemetry.ir_front  = irLookup[analogRead(sensors[sensor_group_in_use][1])];
-    telemetry.ir_right  = irLookup[analogRead(sensors[sensor_group_in_use][2])];
-    drive_cmd_t& drive_cmd = driver.drive(telemetry);
-    send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  drive_cmd.driving_pwm);
-    send_pwm_command(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE, drive_cmd.steering_pwm);
+    drive_cmd_t drive_cmd = do_measurements();
+    send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  int(drive_cmd.driving_pwm));
+    send_pwm_command(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE, int(drive_cmd.steering_pwm));
   }
+}
+
+drive_cmd_t do_measurements(void) {
+  heartbeat();
+  sensor_group_in_use = step_counter % 2;
+  telemetry.ir_left   = ir80Lookup[analogRead(sensors[sensor_group_in_use][0])];
+  if (sensor_group_in_use == 0){
+    telemetry.ir_front  = ir80Lookup[analogRead(sensors[sensor_group_in_use][1])];
+  } else {
+    telemetry.ir_front  = ir150Lookup[analogRead(sensors[sensor_group_in_use][1])];
+  }
+  telemetry.ir_right  = ir80Lookup[analogRead(sensors[sensor_group_in_use][2])];
+  return driver.drive(telemetry, step_counter);
 }
 
 void heartbeat(void) {
