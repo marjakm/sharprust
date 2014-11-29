@@ -13,9 +13,6 @@ static const fixed VAL_2(2);
 static const fixed VAL_3_5(3.5);
 static const fixed VAL_5_5(5.5);
 
-#define BACKING_SECONDS 0.8
-#define STUCK_BEFORE_BACKING_SECONDS 0.6
-
 #ifdef DEBUG
   #include "stdio.h"
 #endif
@@ -35,6 +32,7 @@ MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steeri
         
         maybe_stuck_tick_nr = 0;
         not_stuck_counter   = 0;
+        last_speed_add      = 0;
         
         steering_neutral    = neutral_steering;
         steering_deg_to_pwm = (min_steering - max_steering)/range_steering_deg;
@@ -122,8 +120,19 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 			else if (angle_fact > 1) {
 				angle_fact = 1;
 			}
-			speed_add = angle_fact * (front_fact * speed_add)/2;
-			drive_cmd.driving_pwm = driving_norm_f + speed_add;
+			speed_add = angle_fact * (front_fact * speed_add);
+                        speed_diff = int(last_speed_add - speed_add);
+                        last_speed_add = speed_add;
+                        
+                        if (speed_diff <= -20) {
+                          drive_cmd.driving_pwm = driving_norm_f - speed_add - speed_diff;
+                        } else {
+                          if (speed_diff >= 20) {
+                            drive_cmd.driving_pwm = driving_norm_f + speed_add + speed_diff;
+                          } else {
+                            drive_cmd.driving_pwm = driving_norm_f + speed_add;
+                          }
+                        }
 
 			// stuck countdown
 			if (maybe_stuck) {

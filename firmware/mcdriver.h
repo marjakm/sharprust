@@ -33,7 +33,8 @@ protected:
         
         fixed maybe_stuck_tick_nr;
         fixed backing_start_tick_nr;
-        fixed last_speed_add_tick_nr;
+        fixed last_speed_add;
+        int speed_diff;
 	
         point_t l, f, r;
 	fixed min_front;

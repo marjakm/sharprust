@@ -4,8 +4,6 @@
 #include "mcdriver.h"
 #include "firmware.h"
 
-
-
 fixed ticks_per_second = 1000000./STEP_DELAY;
 
 uint8_t sensors[2][3] = {
@@ -18,6 +16,7 @@ volatile main_loop_states_t main_loop_state;
 IntervalTimer step_timer;
 volatile int  step_counter = 0;
 volatile int  button_first_down_step = 0;
+volatile int  first_start_delay_step = 0;
 
 bc_telemetry_packet_t telemetry;
 volatile int sensor_group_in_use;
@@ -69,10 +68,18 @@ void step_main(void) {
       break;
     case STATE_WAIT_BUTTON:
       heartbeat(40);
-      check_button(STATE_RUNNING);
+      check_button(STATE_WAIT_DELAY);
+      break;
+    case STATE_WAIT_DELAY:
+      heartbeat(20);
+      if (first_start_delay_step == 0) {
+        first_start_delay_step = step_counter;
+      } else if (step_counter-first_start_delay_step >= int(ticks_per_second*START_DELAY_SEC)) {
+        main_loop_state = STATE_RUNNING;
+      }
       break;
     case STATE_RUNNING:
-      heartbeat(20);
+      heartbeat(10);
       check_button(STATE_WAIT_BUTTON);
       drive_cmd_t drive_cmd = do_measurements();
       send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  int(drive_cmd.driving_pwm));
