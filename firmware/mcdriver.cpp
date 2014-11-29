@@ -89,10 +89,12 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 	maybe_stuck = (int(telemetry.mc_dist) < 10) || (int(min_front) < 30);
         
 	turn = telemetry.mc_angle - 90;
-        if (int(turn)-last_turn < 5 and int(turn)-last_turn > -5) {
-          constant_turn_counter++;
-        } else {
-          constant_turn_counter = 0;
+        if (tick_nr % 2 == 0) {
+          if (int(turn)-last_turn < 5 and int(turn)-last_turn > -5) {
+            constant_turn_counter++;
+          } else {
+            constant_turn_counter = 0;
+          }
         }
         
 	steering = 2 * int(turn);
@@ -135,7 +137,9 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                         last_speed_add = speed_add;
                         
                         if ((speed_diff < 15) and (speed_diff > -15)) {
-                          constant_speed_counter++;
+                          if (tick_nr % 2 == 0) {
+                            constant_speed_counter++;
+                          }
                           drive_cmd.driving_pwm = driving_norm_f + speed_add;
                         } else {
                           if (tick_nr % 2 == 0) {
@@ -152,7 +156,7 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                          
                         }
                           
-                       if (constant_speed_counter > 50 || constant_turn_counter > 20 ) {
+                       if (constant_speed_counter > 30 || constant_turn_counter > 20 ) {
                             state = STATE_BACKING;
                             backing_start_tick_nr = tick_nr;
                             maybe_stuck_tick_nr    = 0;
