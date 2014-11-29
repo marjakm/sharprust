@@ -34,7 +34,9 @@ protected:
         fixed maybe_stuck_tick_nr;
         fixed backing_start_tick_nr;
         fixed last_speed_add;
+        
         int speed_diff;
+        int constant_speed_counter;
 	
         point_t l, f, r;
 	int min_front;

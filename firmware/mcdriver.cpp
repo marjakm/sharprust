@@ -22,17 +22,18 @@ MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steeri
 	state = STATE_IDLE;
 	maybe_stuck = false;
 
-        driving_max    = max_driving;
-        driving_norm_f = norm_driving_f;
-        driving_neutral= neutral_driving;
-        driving_norm_b = norm_driving_b;
-        driving_min_b  = min_driving_b;
+        driving_max      = max_driving;
+        driving_norm_f   = norm_driving_f;
+        driving_neutral  = neutral_driving;
+        driving_norm_b   = norm_driving_b;
+        driving_min_b    = min_driving_b;
         ticks_per_second = ticks_to_second;
         ser = &serial;
         
         maybe_stuck_tick_nr = 0;
         not_stuck_counter   = 0;
         last_speed_add      = 0;
+        constant_speed_counter = 0;
         
         steering_neutral    = neutral_steering;
         steering_deg_to_pwm = (min_steering - max_steering)/range_steering_deg;
@@ -124,15 +125,27 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                         speed_diff = int(last_speed_add - speed_add);
                         last_speed_add = speed_add;
                         
-                        if (speed_diff <= -20) {
-                          drive_cmd.driving_pwm = driving_norm_f - speed_add - speed_diff;
-                        } else {
-                          if (speed_diff >= 20) {
-                            drive_cmd.driving_pwm = driving_norm_f + speed_add + speed_diff;
-                          } else {
-                            drive_cmd.driving_pwm = driving_norm_f + speed_add;
+                        if ((speed_diff < 15) and (speed_diff > -15)) {
+                          constant_speed_counter++;
+                          drive_cmd.driving_pwm = driving_norm_f + speed_add;
+                          if (constant_speed_counter > 50) {
+                            state = STATE_BACKING;
+                            backing_start_tick_nr = tick_nr;
+                            maybe_stuck_tick_nr = 0;
+                            break;
                           }
-                        }
+                        } else {
+                          constant_speed_counter = 0;
+                          if ((speed_diff > -30) and (speed_diff < 30)) {
+                            drive_cmd.driving_pwm = driving_norm_f + 2*speed_add;
+                          }
+                          else if (speed_diff < -30) {
+                            drive_cmd.driving_pwm = driving_neutral-20;
+                          } else {
+                            drive_cmd.driving_pwm = driving_max;
+                          }
+                         
+                          }
 
 			// stuck countdown
 			if (maybe_stuck) {
