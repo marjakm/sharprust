@@ -1,7 +1,14 @@
 #ifndef __MCDRIVER__H
 #define __MCDRIVER__H
 
-#include "driver.h"
+#include "fixed.h"
+#include "types.h"
+#include "communication.h"
+
+typedef struct drive_cmd_t {
+	fixed steering_pwm;
+	fixed driving_pwm;
+} drive_cmd_t;
 
 typedef enum mc_driver_states_t {
 	STATE_IDLE = 1, 
@@ -13,11 +20,11 @@ typedef enum mc_driver_states_t {
 } mc_driver_states_t;
 
 // Drive towards mass center of estimated IR reflection points
-class MCDriver: public Driver {
+class MCDriver {
 protected:
 	mc_driver_states_t state;
-       
-        fixed ticks_to_second;
+        drive_cmd_t drive_cmd;
+        fixed ticks_per_second;
         
         bool maybe_stuck;
         fixed maybe_stuck_tick_nr;
@@ -44,7 +51,7 @@ protected:
         fixed _calc_steering_pwm(fixed steering_direction_deg);
 
 public:
-	MCDriver(int tick_delay, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
+	MCDriver(fixed ticks_to_second, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
 	drive_cmd_t& drive(bc_telemetry_packet_t& telemetry, int tick_nr);
 };
 

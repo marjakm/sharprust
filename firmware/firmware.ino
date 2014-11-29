@@ -1,64 +1,48 @@
 #include "lookups.h"
 #include "fixed.h"
 #include "communication.h"
-#include "driver.h"
 #include "mcdriver.h"
+#include "firmware.h"
 
-#define SWEEP_STEP 10
-#define SWEEP_PULSE_REPETITON_COUNT 50
-
-// Bigger number is forwards
-// 1400 - 1600
-#define DRIVING_MIN_PULSE 1400
-#define DRIVING_NORM_B 1400
-#define DRIVING_NEUTRAL 1500
-#define DRIVING_NORM_F 1630
-#define DRIVING_MAX_PULSE 1630
-#define DRIVING_PWM_PIN 11
-
-// Bigger number turns left
-#define STEERING_MIN_PULSE 1340
-#define STEERING_NEUTRAL 1480
-#define STEERING_MAX_PULSE 1560
-#define STEERING_RANGE_DEG 10
-#define STEERING_PWM_PIN 12
-
-#define SENSOR_SWITCH_0 9
-#define SENSOR_SWITCH_1 10
-
-// Sharp measurement takes 38.3ms+-9.6ms
-// Divide it by two and convert to us
-#define STEP_DELAY 19150
+fixed ticks_per_second = 1000000./STEP_DELAY;
 
 uint8_t sensors[2][3] = {
   {A0, A2, A4}, // Group 0: left, front, right
   {A1, A3, A5}  // Group 1: left, front, right
 };
 
+volatile main_loop_states_t main_loop_state;
+
 IntervalTimer step_timer;
-volatile int step_counter = 0;
-volatile int started = 0;
+volatile int  step_counter = 0;
+volatile int  button_first_down_step = 0;
 
 bc_telemetry_packet_t telemetry;
 volatile int sensor_group_in_use;
-MCDriver driver(STEP_DELAY, STEERING_MIN_PULSE , STEERING_NEUTRAL, STEERING_MAX_PULSE, STEERING_RANGE_DEG, DRIVING_NEUTRAL, DRIVING_MAX_PULSE, DRIVING_NORM_F, DRIVING_NORM_B, DRIVING_MIN_PULSE);
+
+MCDriver driver(ticks_per_second, STEERING_MIN_PULSE , STEERING_NEUTRAL, STEERING_MAX_PULSE, STEERING_RANGE_DEG, DRIVING_NEUTRAL, DRIVING_MAX_PULSE, DRIVING_NORM_F, DRIVING_NORM_B, DRIVING_MIN_PULSE);
 
 
 void setup(void) {
   telemetry.header = BC_TELEMETRY;
-  telemetry.ir_front_left        = 0;
+  telemetry.ir_front_left  = 0;
   telemetry.ir_front_right = 0;
+  main_loop_state  = STATE_STARTING_SENSORS;
   
   for (int i=0; i<2; i++) {
     for (int j=0; j<3; j++){
       pinMode(sensors[i][j], INPUT);
     }
   }
+ 
   pinMode(STEERING_PWM_PIN,OUTPUT);
   pinMode(DRIVING_PWM_PIN, OUTPUT);
   pinMode(SENSOR_SWITCH_0, OUTPUT);
   pinMode(SENSOR_SWITCH_1, OUTPUT);
   pinMode(LED_BUILTIN,     OUTPUT);
+  pinMode(START_BUTTON,    INPUT);
+  pinMode(BATTERY_VOLTAGE_PIN, INPUT);
+  
   analogReference(DEFAULT);
   analogReadAveraging(16);
   analogReadResolution(10);
@@ -67,19 +51,44 @@ void setup(void) {
 
 void step_main(void) {
   step_counter++;
-//  heartbeat();
-//  sweep_servo(DRIVING_PWM_PIN, DRIVING_MIN_PULSE, DRIVING_MAX_PULSE);
-  if (started == 0) {
-     turn_on_sensors();
+  switch (main_loop_state) {
+    case STATE_SWEEP_MOTOR:
+      sweep_servo(DRIVING_PWM_PIN, DRIVING_MIN_PULSE, DRIVING_MAX_PULSE);
+      break;   
+    case STATE_SWEEP_STEERING:
+      sweep_servo(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE);
+      break;   
+    case STATE_STARTING_SENSORS:
+      turn_on_sensors();
+      break;
+    case STATE_WAIT_BUTTON:
+      heartbeat(40);
+      check_button(STATE_RUNNING);
+      break;
+    case STATE_RUNNING:
+      heartbeat(20);
+      check_button(STATE_WAIT_BUTTON);
+      drive_cmd_t drive_cmd = do_measurements();
+      send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  int(drive_cmd.driving_pwm));
+      send_pwm_command(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE, int(drive_cmd.steering_pwm));
+      break;
+  }
+}
+
+void check_button(main_loop_states_t next_state) {
+  if (digitalRead(START_BUTTON) == LOW) {
+    if (button_first_down_step == 0) {
+      button_first_down_step = step_counter;     
+    }
   } else {
-    drive_cmd_t drive_cmd = do_measurements();
-    send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  int(drive_cmd.driving_pwm));
-    send_pwm_command(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE, int(drive_cmd.steering_pwm));
+    if ((button_first_down_step != 0) and (step_counter - button_first_down_step >= int(ticks_per_second*REQ_BUTTON_PRESS_SEC))) {
+      main_loop_state = next_state;
+    }
+    button_first_down_step = 0;
   }
 }
 
 drive_cmd_t do_measurements(void) {
-  heartbeat();
   sensor_group_in_use = step_counter % 2;
   telemetry.ir_left   = ir80Lookup[analogRead(sensors[sensor_group_in_use][0])];
   if (sensor_group_in_use == 0){
@@ -91,9 +100,9 @@ drive_cmd_t do_measurements(void) {
   return driver.drive(telemetry, step_counter);
 }
 
-void heartbeat(void) {
-  if (step_counter % 25 == 0) {
-    if (step_counter % 50 == 0) {
+void heartbeat(int interval_step_count) {
+  if (step_counter % interval_step_count == 0) {
+    if (step_counter % (2*interval_step_count) == 0) {
       digitalWrite(LED_BUILTIN, LOW);
     } else {
       digitalWrite(LED_BUILTIN, HIGH);
@@ -106,7 +115,7 @@ void turn_on_sensors(void) {
     digitalWrite(SENSOR_SWITCH_0, HIGH);
   } else {
     digitalWrite(SENSOR_SWITCH_1, HIGH);
-    started = 1;
+    main_loop_state = STATE_WAIT_BUTTON;
   }
 }
 
