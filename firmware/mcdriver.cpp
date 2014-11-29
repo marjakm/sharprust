@@ -3,7 +3,9 @@
 
 static const fixed VAL_SQRT_1_DIV_2(0.70710678118654752440084436210485);
 static const fixed VAL_SQRT_3_DIV_2(0.86602540378443864676372317075294);
+
 static const fixed VAL_1_DIV_45(0.02222222222222222222222222222222);
+static const fixed VAL_1_DIV_150(0.00666666666666666666666666666666);
 
 static const fixed VAL_0_5(0.5);
 static const fixed VAL_1(1);
@@ -12,8 +14,7 @@ static const fixed VAL_3_5(3.5);
 static const fixed VAL_5_5(5.5);
 
 #define BACKING_SECONDS 0.8
-#define BRAKING_SECONDS 0.1
-#define STUCK_BEFORE_BACKING_SECONDS 0.8
+#define STUCK_BEFORE_BACKING_SECONDS 0.6
 
 #ifdef DEBUG
   #include "stdio.h"
@@ -47,12 +48,12 @@ void MCDriver::_calc_direction(bc_telemetry_packet_t& telemetry) {
 	// left and right 45 degrees from center (y-axis)
 	// front_left and front_right 30 degrees from center (y-axis)
 	fixed a1 = telemetry.ir_left * VAL_SQRT_1_DIV_2;
-	l.x = -(a1 + VAL_3_5);
-	l.y = a1 - VAL_1;
-	f.y = telemetry.ir_front + VAL_5_5; // f.x always 0
+	l.x = -a1;
+	l.y = a1;
+	f.y = telemetry.ir_front; // f.x always 0
 	fixed a2 = telemetry.ir_right * VAL_SQRT_1_DIV_2;
-	r.x = a2 + VAL_3_5;
-	r.y = a2 - VAL_1;
+	r.x = a2;
+	r.y = a2;
 
 	min_front = f.y;
 
@@ -103,7 +104,12 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 
 			// normal operation
 			front_fact = (45 - turn.abs()) * VAL_1_DIV_45; // correct speed by turn angle
-			angle_fact = (telemetry.ir_front - 20) * 0.01; // correct speed by front distance
+                        if (tick_nr % 2 == 1) { //150 cm senor
+                          angle_fact = telemetry.ir_front * VAL_1_DIV_150;
+                        } else {
+                          angle_fact = (telemetry.ir_front-20) * 0.01;
+                        }
+			
 			if (front_fact < 0) {
 				front_fact = 0;
 			}
@@ -116,17 +122,9 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 			else if (angle_fact > 1) {
 				angle_fact = 1;
 			}
-			speed_add = angle_fact * (front_fact * speed_add);
-			drive_cmd.driving_pwm = driving_norm_f ;//+ speed_add;
+			speed_add = angle_fact * (front_fact * speed_add)/2;
+			drive_cmd.driving_pwm = driving_norm_f + speed_add;
 
-			// for abrupt lowering of speed go to braking state
-			if (speed_add < last_speed_add - 5) {
-				last_speed_add = speed_add;
-				state = STATE_BRAKING;
-                                braking_start_tick_nr = tick_nr;
-				break;
-			}
-			last_speed_add = speed_add;
 			// stuck countdown
 			if (maybe_stuck) {
                             not_stuck_counter = 0;
@@ -158,16 +156,6 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                         }
 			break;
 
-		case STATE_BRAKING:
-                        #ifdef USE_SERIAL
-                          ser->printf("braking\n");
-                        #endif
-			drive_cmd.steering_pwm = _calc_steering_pwm(-steering);
-			drive_cmd.driving_pwm  = driving_norm_b;
-                        if (tick_nr - braking_start_tick_nr >= int(BRAKING_SECONDS*ticks_per_second)) {
-                          state = STATE_NORMAL;
-                        }
-			break;
 
 		case STATE_IDLE:
 		default:

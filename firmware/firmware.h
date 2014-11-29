@@ -10,11 +10,11 @@
 
 // Bigger number is forwards
 // 1400 - 1630 is good
-#define DRIVING_MIN_PULSE 1400
-#define DRIVING_NORM_B 1400
+#define DRIVING_MIN_PULSE 1380
+#define DRIVING_NORM_B 1380
 #define DRIVING_NEUTRAL 1500
-#define DRIVING_NORM_F 1650
-#define DRIVING_MAX_PULSE 1650
+#define DRIVING_NORM_F 1610
+#define DRIVING_MAX_PULSE 1800
 #define DRIVING_PWM_PIN 11
 
 // Bigger number turns left
@@ -37,7 +37,7 @@
 
 typedef enum main_loop_states {
         STATE_STARTING_SENSORS,
-	STATE_WAIT_BUTTON,  
+	STATE_WAIT_BUTTON,
         STATE_RUNNING,
         STATE_SWEEP_MOTOR,
         STATE_SWEEP_STEERING,
