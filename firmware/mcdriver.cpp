@@ -33,7 +33,10 @@ MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steeri
         maybe_stuck_tick_nr = 0;
         not_stuck_counter   = 0;
         last_speed_add      = 0;
+        last_turn           = 0;
         constant_speed_counter = 0;
+        constant_turn_counter  = 0;
+        
         
         steering_neutral    = neutral_steering;
         steering_deg_to_pwm = (min_steering - max_steering)/range_steering_deg;
@@ -86,6 +89,12 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 	maybe_stuck = (int(telemetry.mc_dist) < 10) || (int(min_front) < 30);
         
 	turn = telemetry.mc_angle - 90;
+        if (int(turn)-last_turn < 5 and int(turn)-last_turn > -5) {
+          constant_turn_counter++;
+        } else {
+          constant_turn_counter = 0;
+        }
+        
 	steering = 2 * int(turn);
 
         #ifdef USE_SERIAL
@@ -128,42 +137,47 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                         if ((speed_diff < 15) and (speed_diff > -15)) {
                           constant_speed_counter++;
                           drive_cmd.driving_pwm = driving_norm_f + speed_add;
-                          if (constant_speed_counter > 50) {
-                            state = STATE_BACKING;
-                            backing_start_tick_nr = tick_nr;
-                            maybe_stuck_tick_nr = 0;
-                            break;
-                          }
                         } else {
-                          constant_speed_counter = 0;
-                          if ((speed_diff > -30) and (speed_diff < 30)) {
+                          if (tick_nr % 2 == 0) {
+                            constant_speed_counter = 0;
+                          }
+                          if ((speed_diff > -25) and (speed_diff < 30)) {
                             drive_cmd.driving_pwm = driving_norm_f + 2*speed_add;
                           }
-                          else if (speed_diff < -30) {
-                            drive_cmd.driving_pwm = driving_neutral-20;
+                          else if (speed_diff < -25) {
+                            drive_cmd.driving_pwm = driving_neutral-40;
                           } else {
                             drive_cmd.driving_pwm = driving_max;
                           }
                          
-                          }
-
+                        }
+                          
+                       if (constant_speed_counter > 50 || constant_turn_counter > 20 ) {
+                            state = STATE_BACKING;
+                            backing_start_tick_nr = tick_nr;
+                            maybe_stuck_tick_nr    = 0;
+                            constant_speed_counter = 0;
+                            constant_turn_counter  = 0;
+                            break;
+                       }
+                        
 			// stuck countdown
 			if (maybe_stuck) {
-                            not_stuck_counter = 0;
-                            if (maybe_stuck_tick_nr == 0) {
-                              maybe_stuck_tick_nr = tick_nr;            
-                            } else {
-                              if (tick_nr - maybe_stuck_tick_nr >= int(STUCK_BEFORE_BACKING_SECONDS*ticks_per_second)) {
-                                state = STATE_BACKING;
-                                backing_start_tick_nr = tick_nr;
-                                maybe_stuck_tick_nr = 0;
-			      }   
-                            }
-			} else {
-                            not_stuck_counter++;
-                            if (not_stuck_counter >= 5) {
+                          not_stuck_counter = 0;
+                          if (maybe_stuck_tick_nr == 0) {
+                            maybe_stuck_tick_nr = tick_nr;            
+                          } else {
+                            if (tick_nr - maybe_stuck_tick_nr >= int(STUCK_BEFORE_BACKING_SECONDS*ticks_per_second)) {
+                              state = STATE_BACKING;
+                              backing_start_tick_nr = tick_nr;
                               maybe_stuck_tick_nr = 0;
-                            }
+			      }   
+                          }
+			} else {
+                          not_stuck_counter++;
+                          if (not_stuck_counter >= 5) {
+                            maybe_stuck_tick_nr = 0;
+                          }
 			}
 			break;
 
@@ -174,6 +188,7 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 			drive_cmd.steering_pwm = _calc_steering_pwm(steering);
 			drive_cmd.driving_pwm  = driving_norm_b;
                         if (tick_nr - backing_start_tick_nr >= int(BACKING_SECONDS*ticks_per_second)) {
+
                           state = STATE_NORMAL;
                         }
 			break;

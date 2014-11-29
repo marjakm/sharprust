@@ -56,6 +56,7 @@ void setup(void) {
 }
 
 void step_main(void) {
+  noInterrupts();
   step_counter++;
   switch (main_loop_state) {
     case STATE_SWEEP_MOTOR:
@@ -73,7 +74,7 @@ void step_main(void) {
       check_button(STATE_WAIT_DELAY);
       break;
     case STATE_WAIT_DELAY:
-      heartbeat(20);
+      heartbeat(10);
       if (first_start_delay_step == 0) {
         first_start_delay_step = step_counter;
       } else if (step_counter-first_start_delay_step >= int(ticks_per_second*START_DELAY_SEC)) {
@@ -81,13 +82,14 @@ void step_main(void) {
       }
       break;
     case STATE_RUNNING:
-      heartbeat(10);
+      heartbeat(20);
       check_button(STATE_WAIT_BUTTON);
       drive_cmd = do_measurements();
       send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  int(drive_cmd.driving_pwm));
       send_pwm_command(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE, int(drive_cmd.steering_pwm));
       break;
   }
+  interrupts();
 }
 
 void check_button(main_loop_states_t next_state) {
