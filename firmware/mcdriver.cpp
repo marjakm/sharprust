@@ -53,7 +53,7 @@ void MCDriver::_calc_direction(bc_telemetry_packet_t& telemetry) {
 	r.x = a2;
 	r.y = a2;
 
-	min_front = f.y;
+	min_front = int(f.y);
 
 	// Fill missing telemetry values
 	fixed inv_wsum = 1 / (telemetry.ir_left + telemetry.ir_front + telemetry.ir_right);
@@ -82,13 +82,13 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 	fixed turn, speed_add, front_fact, angle_fact;
 
 	_calc_direction(telemetry);
-	maybe_stuck = (telemetry.mc_dist < 10) || (min_front < 30);
+	maybe_stuck = (int(telemetry.mc_dist) < 10) || (int(min_front) < 30);
         
 	turn = telemetry.mc_angle - 90;
 	steering = 2 * int(turn);
 
         #ifdef USE_SERIAL
-          ser->printf("drive l %3d,%3d  f %3d,%3d r %3d,%3d \n", int(l.x),int(l.y), int(f.x),int(f.y), int(r.x),int(r.y));
+          ser->printf("drive l %3d,%3d  f %3d,%3d r %3d,%3d mc_dist %3d min_front %3d maybe_stuck %d\n", int(l.x),int(l.y), int(f.x),int(f.y), int(r.x),int(r.y), int(telemetry.mc_dist), int(min_front), maybe_stuck);
         #endif
         
 
@@ -140,7 +140,7 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                             if (maybe_stuck_tick_nr == 0) {
                               maybe_stuck_tick_nr = tick_nr;            
                             } else {
-                              if (tick_nr - maybe_stuck_tick_nr == int(STUCK_BEFORE_BACKING_SECONDS*ticks_per_second)) {
+                              if (tick_nr - maybe_stuck_tick_nr >= int(STUCK_BEFORE_BACKING_SECONDS*ticks_per_second)) {
                                 state = STATE_BACKING;
                                 backing_start_tick_nr = tick_nr;
                                 maybe_stuck_tick_nr = 0;

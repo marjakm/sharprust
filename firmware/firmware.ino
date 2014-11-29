@@ -22,6 +22,7 @@ bc_telemetry_packet_t telemetry;
 volatile int sensor_group_in_use;
 
 MCDriver *driver;
+drive_cmd_t drive_cmd;
 
 void setup(void) {
   #ifdef USE_SERIAL
@@ -68,6 +69,7 @@ void step_main(void) {
       break;
     case STATE_WAIT_BUTTON:
       heartbeat(40);
+      //drive_cmd = do_measurements();
       check_button(STATE_WAIT_DELAY);
       break;
     case STATE_WAIT_DELAY:
@@ -81,7 +83,7 @@ void step_main(void) {
     case STATE_RUNNING:
       heartbeat(10);
       check_button(STATE_WAIT_BUTTON);
-      drive_cmd_t drive_cmd = do_measurements();
+      drive_cmd = do_measurements();
       send_pwm_command(DRIVING_PWM_PIN,  DRIVING_MIN_PULSE,  DRIVING_MAX_PULSE,  int(drive_cmd.driving_pwm));
       send_pwm_command(STEERING_PWM_PIN, STEERING_MIN_PULSE, STEERING_MAX_PULSE, int(drive_cmd.steering_pwm));
       break;

@@ -37,7 +37,7 @@ protected:
         int speed_diff;
 	
         point_t l, f, r;
-	fixed min_front;
+	int min_front;
 
         fixed driving_max;
         fixed driving_norm_f;
