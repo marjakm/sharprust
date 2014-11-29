@@ -4,6 +4,7 @@
 #include "fixed.h"
 #include "types.h"
 #include "communication.h"
+#include "HardwareSerial.h"
 
 typedef struct drive_cmd_t {
 	fixed steering_pwm;
@@ -25,8 +26,11 @@ protected:
 	mc_driver_states_t state;
         drive_cmd_t drive_cmd;
         fixed ticks_per_second;
+        HardwareSerial* ser;
         
         bool maybe_stuck;
+        fixed not_stuck_counter;
+        
         fixed maybe_stuck_tick_nr;
         fixed backing_start_tick_nr;
         fixed braking_start_tick_nr;
@@ -51,7 +55,7 @@ protected:
         fixed _calc_steering_pwm(fixed steering_direction_deg);
 
 public:
-	MCDriver(fixed ticks_to_second, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
+	MCDriver(HardwareSerial &ser, fixed ticks_to_second, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b);
 	drive_cmd_t& drive(bc_telemetry_packet_t& telemetry, int tick_nr);
 };
 

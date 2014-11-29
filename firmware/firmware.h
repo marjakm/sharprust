@@ -1,15 +1,20 @@
 #ifndef __FIRMWARE__H
 #define __FIRMWARE__H
 
+//#define USE_SERIAL
+#define SERIALDEV Serial1
+
+
 #define SWEEP_STEP 10
 #define SWEEP_PULSE_REPETITON_COUNT 50
 
 // Bigger number is forwards
+// 1400 - 1630 is good
 #define DRIVING_MIN_PULSE 1400
 #define DRIVING_NORM_B 1400
 #define DRIVING_NEUTRAL 1500
-#define DRIVING_NORM_F 1630
-#define DRIVING_MAX_PULSE 1630
+#define DRIVING_NORM_F 1650
+#define DRIVING_MAX_PULSE 1650
 #define DRIVING_PWM_PIN 11
 
 // Bigger number turns left

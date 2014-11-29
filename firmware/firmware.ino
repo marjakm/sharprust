@@ -4,6 +4,8 @@
 #include "mcdriver.h"
 #include "firmware.h"
 
+
+
 fixed ticks_per_second = 1000000./STEP_DELAY;
 
 uint8_t sensors[2][3] = {
@@ -20,10 +22,14 @@ volatile int  button_first_down_step = 0;
 bc_telemetry_packet_t telemetry;
 volatile int sensor_group_in_use;
 
-MCDriver driver(ticks_per_second, STEERING_MIN_PULSE , STEERING_NEUTRAL, STEERING_MAX_PULSE, STEERING_RANGE_DEG, DRIVING_NEUTRAL, DRIVING_MAX_PULSE, DRIVING_NORM_F, DRIVING_NORM_B, DRIVING_MIN_PULSE);
-
+MCDriver *driver;
 
 void setup(void) {
+  #ifdef USE_SERIAL
+    SERIALDEV.begin(115200);
+  #endif
+  driver = new MCDriver(SERIALDEV, ticks_per_second, STEERING_MIN_PULSE , STEERING_NEUTRAL, STEERING_MAX_PULSE, STEERING_RANGE_DEG, DRIVING_NEUTRAL, DRIVING_MAX_PULSE, DRIVING_NORM_F, DRIVING_NORM_B, DRIVING_MIN_PULSE);
+  
   telemetry.header = BC_TELEMETRY;
   telemetry.ir_front_left  = 0;
   telemetry.ir_front_right = 0;
@@ -97,7 +103,7 @@ drive_cmd_t do_measurements(void) {
     telemetry.ir_front  = ir150Lookup[analogRead(sensors[sensor_group_in_use][1])];
   }
   telemetry.ir_right  = ir80Lookup[analogRead(sensors[sensor_group_in_use][2])];
-  return driver.drive(telemetry, step_counter);
+  return driver->drive(telemetry, step_counter);
 }
 
 void heartbeat(int interval_step_count) {

@@ -1,4 +1,5 @@
 #include "mcdriver.h"
+#include "firmware.h"
 
 static const fixed VAL_SQRT_1_DIV_2(0.70710678118654752440084436210485);
 static const fixed VAL_SQRT_3_DIV_2(0.86602540378443864676372317075294);
@@ -10,16 +11,16 @@ static const fixed VAL_2(2);
 static const fixed VAL_3_5(3.5);
 static const fixed VAL_5_5(5.5);
 
-#define BACKING_SECONDS 1.0
+#define BACKING_SECONDS 0.8
 #define BRAKING_SECONDS 0.1
-#define STUCK_BEFORE_BACKING_SECONDS 1.0
+#define STUCK_BEFORE_BACKING_SECONDS 0.8
 
 #ifdef DEBUG
   #include "stdio.h"
 #endif
 
 
-MCDriver::MCDriver(fixed ticks_to_second, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b) {
+MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b) {
 	state = STATE_IDLE;
 	maybe_stuck = false;
 
@@ -29,8 +30,10 @@ MCDriver::MCDriver(fixed ticks_to_second, int min_steering, int neutral_steering
         driving_norm_b = norm_driving_b;
         driving_min_b  = min_driving_b;
         ticks_per_second = ticks_to_second;
+        ser = &serial;
         
         maybe_stuck_tick_nr = 0;
+        not_stuck_counter   = 0;
         
         steering_neutral    = neutral_steering;
         steering_deg_to_pwm = (min_steering - max_steering)/range_steering_deg;
@@ -76,14 +79,19 @@ fixed MCDriver::_calc_steering_pwm(fixed steering_direction_deg) {
   return steering_neutral-steering_deg_to_pwm*steering_direction_deg;
 }
 
-drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
+drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {   
 	fixed turn, speed_add, front_fact, angle_fact;
 
 	_calc_direction(telemetry);
-	maybe_stuck = (telemetry.mc_dist < 10) || (min_front < 40);
-        //maybe_stuck = false;
+	maybe_stuck = (telemetry.mc_dist < 10) || (min_front < 30);
+        
 	turn = telemetry.mc_angle - 90;
 	steering = 2 * int(turn);
+
+        #ifdef USE_SERIAL
+          ser->printf("drive l %3d,%3d  f %3d,%3d r %3d,%3d \n", int(l.x),int(l.y), int(f.x),int(f.y), int(r.x),int(r.y));
+        #endif
+        
 
 	switch (state) {
 		case STATE_NORMAL:
@@ -119,35 +127,44 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 				break;
 			}
 			last_speed_add = speed_add;
-
 			// stuck countdown
 			if (maybe_stuck) {
-                            if (maybe_stuck_tick_nr != 0) {
-                              if (tick_nr - maybe_stuck_tick_nr == STUCK_BEFORE_BACKING_SECONDS*ticks_per_second) {
+                            not_stuck_counter = 0;
+                            if (maybe_stuck_tick_nr == 0) {
+                              maybe_stuck_tick_nr = tick_nr;            
+                            } else {
+                              if (tick_nr - maybe_stuck_tick_nr == int(STUCK_BEFORE_BACKING_SECONDS*ticks_per_second)) {
                                 state = STATE_BACKING;
                                 backing_start_tick_nr = tick_nr;
                                 maybe_stuck_tick_nr = 0;
-			      }                                  
-                            } else {
-                              maybe_stuck_tick_nr = tick_nr;
+			      }   
                             }
 			} else {
-			   maybe_stuck_tick_nr = 0;
+                            not_stuck_counter++;
+                            if (not_stuck_counter >= 5) {
+                              maybe_stuck_tick_nr = 0;
+                            }
 			}
 			break;
 
 		case STATE_BACKING:
+                        #ifdef USE_SERIAL
+                          ser->printf("backing\n");
+                        #endif
 			drive_cmd.steering_pwm = _calc_steering_pwm(steering);
 			drive_cmd.driving_pwm  = driving_norm_b;
-                        if (tick_nr - backing_start_tick_nr >= BACKING_SECONDS*ticks_per_second) {
+                        if (tick_nr - backing_start_tick_nr >= int(BACKING_SECONDS*ticks_per_second)) {
                           state = STATE_NORMAL;
                         }
 			break;
 
 		case STATE_BRAKING:
+                        #ifdef USE_SERIAL
+                          ser->printf("braking\n");
+                        #endif
 			drive_cmd.steering_pwm = _calc_steering_pwm(-steering);
 			drive_cmd.driving_pwm  = driving_norm_b;
-                        if (tick_nr - braking_start_tick_nr >= BRAKING_SECONDS*ticks_per_second) {
+                        if (tick_nr - braking_start_tick_nr >= int(BRAKING_SECONDS*ticks_per_second)) {
                           state = STATE_NORMAL;
                         }
 			break;
