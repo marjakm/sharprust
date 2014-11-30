@@ -17,7 +17,7 @@ typedef enum mc_driver_states_t {
         STATE_START_BACKING_1, 
         STATE_START_BACKING_2, 
         STATE_BACKING, 
-        STATE_BRAKING
+        STATE_CLIMB_MOUNTAIN
 } mc_driver_states_t;
 
 // Drive towards mass center of estimated IR reflection points
@@ -33,12 +33,21 @@ protected:
         
         fixed maybe_stuck_tick_nr;
         fixed backing_start_tick_nr;
-        int last_speed_add;
-        int last_turn;
+        fixed turn;
+        fixed speed_add;
+        fixed front_fact;
+        fixed angle_fact;
+        fixed last_speed_add;
         
+        int last_turn;
         int speed_diff;
         int constant_speed_counter;
+        int constant_speed_counter_hyst;
         int constant_turn_counter;
+        int constant_turn_counter_hyst;
+        
+        int turn_direction_counter;
+        int turn_direction_counter_hyst;
 	
         point_t l, f, r;
 	int min_front;

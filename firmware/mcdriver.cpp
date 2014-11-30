@@ -2,24 +2,19 @@
 #include "firmware.h"
 
 static const fixed VAL_SQRT_1_DIV_2(0.70710678118654752440084436210485);
-static const fixed VAL_SQRT_3_DIV_2(0.86602540378443864676372317075294);
-
 static const fixed VAL_1_DIV_45(0.02222222222222222222222222222222);
 static const fixed VAL_1_DIV_150(0.00666666666666666666666666666666);
-
-static const fixed VAL_0_5(0.5);
-static const fixed VAL_1(1);
-static const fixed VAL_2(2);
-static const fixed VAL_3_5(3.5);
-static const fixed VAL_5_5(5.5);
 
 #ifdef DEBUG
   #include "stdio.h"
 #endif
 
-
-MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steering, int neutral_steering, int max_steering, int range_steering_deg, int neutral_driving, int max_driving, int norm_driving_f, int norm_driving_b, int min_driving_b) {
-	state = STATE_IDLE;
+MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steering, 
+                   int neutral_steering,   int max_steering,      int range_steering_deg, 
+                   int neutral_driving,    int max_driving,       int norm_driving_f, 
+                   int norm_driving_b,     int min_driving_b) {
+                     
+	state       = STATE_IDLE;
 	maybe_stuck = false;
 
         driving_max      = max_driving;
@@ -34,9 +29,13 @@ MCDriver::MCDriver(HardwareSerial &serial, fixed ticks_to_second, int min_steeri
         not_stuck_counter   = 0;
         last_speed_add      = 0;
         last_turn           = 0;
-        constant_speed_counter = 0;
-        constant_turn_counter  = 0;
         
+        constant_speed_counter       = 0;
+        constant_speed_counter_hyst  = 0;
+        constant_turn_counter        = 0;
+        constant_turn_counter_hyst   = 0;
+        turn_direction_counter       = 0;
+        turn_direction_counter_hyst  = 0;
         
         steering_neutral    = neutral_steering;
         steering_deg_to_pwm = (min_steering - max_steering)/range_steering_deg;
@@ -83,24 +82,15 @@ fixed MCDriver::_calc_steering_pwm(fixed steering_direction_deg) {
 }
 
 drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {   
-	fixed turn, speed_add, front_fact, angle_fact;
-
 	_calc_direction(telemetry);
-	maybe_stuck = (int(telemetry.mc_dist) < 10) || (int(min_front) < 30);
-        
+	maybe_stuck = (int(telemetry.mc_dist) < 10) || (int(min_front) < 30) || ((int(telemetry.ir_left)==80) && (int(telemetry.ir_right)==80));
 	turn = telemetry.mc_angle - 90;
-        if (tick_nr % 2 == 0) {
-          if (int(turn)-last_turn < 5 and int(turn)-last_turn > -5) {
-            constant_turn_counter++;
-          } else {
-            constant_turn_counter = 0;
-          }
-        }
-        
 	steering = 2 * int(turn);
 
         #ifdef USE_SERIAL
-          ser->printf("drive l %3d,%3d  f %3d,%3d r %3d,%3d mc_dist %3d min_front %3d maybe_stuck %d\n", int(l.x),int(l.y), int(f.x),int(f.y), int(r.x),int(r.y), int(telemetry.mc_dist), int(min_front), maybe_stuck);
+          ser->printf("drive l %3d,%3d  f %3d,%3d r %3d,%3d mc_dist %3d min_front %3d maybe_stuck %d\n", 
+            int(l.x),int(l.y), int(f.x),int(f.y), int(r.x),int(r.y), int(telemetry.mc_dist), int(min_front), maybe_stuck
+          );
         #endif
         
 
@@ -108,9 +98,6 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 		case STATE_NORMAL:
 			// steering calculations
 			drive_cmd.steering_pwm = _calc_steering_pwm(-steering);
-
-			// speed calculations
-			speed_add = fixed(driving_max - driving_norm_f);
 
 			// normal operation
 			front_fact = (45 - turn.abs()) * VAL_1_DIV_45; // correct speed by turn angle
@@ -132,18 +119,22 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
 			else if (angle_fact > 1) {
 				angle_fact = 1;
 			}
-			speed_add = angle_fact * (front_fact * speed_add);
+			speed_add = angle_fact * (front_fact * fixed(driving_max - driving_norm_f));
                         speed_diff = int(last_speed_add - speed_add);
                         last_speed_add = speed_add;
                         
                         if ((speed_diff < 15) and (speed_diff > -15)) {
-                          if (tick_nr % 2 == 0) {
-                            constant_speed_counter++;
-                          }
+                          constant_speed_counter++;
+                          constant_speed_counter_hyst = 0;
                           drive_cmd.driving_pwm = driving_norm_f + speed_add;
                         } else {
                           if (tick_nr % 2 == 0) {
-                            constant_speed_counter = 0;
+                            if (constant_speed_counter_hyst > 2){
+                              constant_speed_counter      = 0;
+                              constant_speed_counter_hyst = 0;
+                            } else {
+                              constant_speed_counter_hyst++;
+                            }
                           }
                           if ((speed_diff > -25) and (speed_diff < 30)) {
                             drive_cmd.driving_pwm = driving_norm_f + 2*speed_add;
@@ -153,15 +144,33 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                           } else {
                             drive_cmd.driving_pwm = driving_max;
                           }
-                         
                         }
+                        
+                        if (tick_nr % 2 == 0) {
+                          if (int(turn)-last_turn < 10 and int(turn)-last_turn > -10) {
+                            constant_turn_counter++;
+                            constant_turn_counter_hyst=0;
+                          } else {
+                            if (constant_turn_counter_hyst > 2){
+                              constant_turn_counter = 0;
+                              constant_turn_counter_hyst=0;
+                            } else {
+                              constant_turn_counter_hyst++;
+                            }
+                          }
+                        }
+                        last_turn = turn;
+                        
+                        
                           
-                       if (constant_speed_counter > 30 || constant_turn_counter > 20 ) {
+                       if (constant_speed_counter > 30 || constant_turn_counter > 40 ) {
                             state = STATE_BACKING;
-                            backing_start_tick_nr = tick_nr;
+                            backing_start_tick_nr  = tick_nr;
                             maybe_stuck_tick_nr    = 0;
                             constant_speed_counter = 0;
+                            constant_speed_counter_hyst = 0;
                             constant_turn_counter  = 0;
+                            constant_turn_counter_hyst=0;
                             break;
                        }
                         
@@ -189,13 +198,20 @@ drive_cmd_t& MCDriver::drive(bc_telemetry_packet_t& telemetry, int tick_nr) {
                         #ifdef USE_SERIAL
                           ser->printf("backing\n");
                         #endif
-			drive_cmd.steering_pwm = _calc_steering_pwm(steering);
+			drive_cmd.steering_pwm = _calc_steering_pwm(steering/2);
 			drive_cmd.driving_pwm  = driving_norm_b;
                         if (tick_nr - backing_start_tick_nr >= int(BACKING_SECONDS*ticks_per_second)) {
-
                           state = STATE_NORMAL;
                         }
 			break;
+
+                case STATE_CLIMB_MOUNTAIN:
+                  drive_cmd.steering_pwm = _calc_steering_pwm(0);
+	          drive_cmd.driving_pwm  = driving_max;
+                  if (tick_nr - backing_start_tick_nr >= int(MOUNTAIN_CLIMB_SECONDS*ticks_per_second)) {
+                    state = STATE_NORMAL;
+                  }
+                  break;
 
 
 		case STATE_IDLE:
